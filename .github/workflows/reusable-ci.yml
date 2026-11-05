@@ -135,3 +135,31 @@ jobs:
           test -n "$(git ls-files)"
           git diff --check
           echo "Repository integrity checks passed."
+
+  ci-result:
+    name: CI result
+    needs:
+      - detect
+      - node
+      - python
+      - php
+      - repository
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Confirm all applicable checks passed
+        env:
+          DETECT_RESULT: ${{ needs.detect.result }}
+          NODE_RESULT: ${{ needs.node.result }}
+          PYTHON_RESULT: ${{ needs.python.result }}
+          PHP_RESULT: ${{ needs.php.result }}
+          REPOSITORY_RESULT: ${{ needs.repository.result }}
+        shell: bash
+        run: |
+          for result in "$DETECT_RESULT" "$NODE_RESULT" "$PYTHON_RESULT" "$PHP_RESULT" "$REPOSITORY_RESULT"; do
+            case "$result" in
+              success|skipped) ;;
+              *) echo "::error::A required CI job finished with result: $result"; exit 1 ;;
+            esac
+          done
+          echo "All applicable CI checks passed."
