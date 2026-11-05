@@ -1,0 +1,112 @@
+name: Reusable Repository CI
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  detect:
+    name: Detect project stacks
+    runs-on: ubuntu-latest
+    outputs:
+      node: ${{ steps.detect.outputs.node }}
+      python: ${{ steps.detect.outputs.python }}
+      php: ${{ steps.detect.outputs.php }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: detect
+        name: Detect supported project manifests
+        shell: bash
+        run: |
+          echo "node=$([[ -f package.json ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "python=$([[ -f pyproject.toml || -f requirements.txt || -f setup.py ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "php=$([[ -f composer.json ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          test -n "$(git ls-files)" || { echo "Repository contains no tracked files"; exit 1; }
+
+  node:
+    name: Node.js checks
+    needs: detect
+    if: needs.detect.outputs.node == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: |
+          if [ -f package-lock.json ]; then npm ci;
+          elif [ -f pnpm-lock.yaml ]; then corepack enable && pnpm install --frozen-lockfile;
+          elif [ -f yarn.lock ]; then corepack enable && yarn install --immutable;
+          else npm install; fi
+      - name: Run available quality checks
+        shell: bash
+        run: |
+          if node -e "process.exit(require('./package.json').scripts?.lint ? 0 : 1)"; then npm run lint; fi
+          if node -e "process.exit(require('./package.json').scripts?.typecheck ? 0 : 1)"; then npm run typecheck; fi
+          if node -e "process.exit(require('./package.json').scripts?.test ? 0 : 1)"; then npm test -- --run; fi
+          if node -e "process.exit(require('./package.json').scripts?.build ? 0 : 1)"; then npm run build; fi
+
+  python:
+    name: Python checks
+    needs: detect
+    if: needs.detect.outputs.python == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install project dependencies
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          pip install pytest
+      - name: Compile Python sources
+        run: python -m compileall -q .
+      - name: Run pytest when tests are present
+        shell: bash
+        run: |
+          if find . -type f \( -name 'test_*.py' -o -name '*_test.py' \) -not -path './.git/*' | grep -q .; then
+            pytest -q
+          else
+            echo "No pytest test files found; syntax validation completed."
+          fi
+
+  php:
+    name: PHP checks
+    needs: detect
+    if: needs.detect.outputs.php == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          tools: composer
+      - name: Validate Composer configuration
+        run: composer validate --no-check-publish
+      - name: Lint PHP sources
+        shell: bash
+        run: |
+          find . -type f -name '*.php' -not -path './vendor/*' -not -path './.git/*' -print0 |
+            xargs -0 -r -n1 php -l
+
+  repository:
+    name: Repository integrity
+    needs: detect
+    if: always() && needs.detect.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate tracked repository content
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$(git ls-files)"
+          git diff --check
+          echo "Repository integrity checks passed."
