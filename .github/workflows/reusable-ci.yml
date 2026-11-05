@@ -71,10 +71,14 @@ jobs:
       - name: Run pytest when tests are present
         shell: bash
         run: |
-          if find . -type f \( -name 'test_*.py' -o -name '*_test.py' \) -not -path './.git/*' | grep -q .; then
-            pytest -q
+          set +e
+          pytest -q
+          status=$?
+          set -e
+          if [ "$status" -eq 5 ]; then
+            echo "No pytest tests were collected; syntax validation completed."
           else
-            echo "No pytest test files found; syntax validation completed."
+            exit "$status"
           fi
 
   php:
