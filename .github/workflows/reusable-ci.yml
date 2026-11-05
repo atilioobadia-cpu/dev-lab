@@ -58,7 +58,7 @@ jobs:
           fi
           if node -e "process.exit(require('./package.json').scripts?.typecheck ? 0 : 1)"; then npm run typecheck; fi
           if node -e "const s=require('./package.json').scripts?.test || ''; process.exit(s && !s.includes('no test specified') ? 0 : 1)"; then CI=1 npm test; else echo "No real test script configured; skipping placeholder test command."; fi
-          if node -e "process.exit(require('./package.json').scripts?.build ? 0 : 1)"; then CI=1 npm run build; fi
+          if node -e "process.exit(require('./package.json').scripts?.build ? 0 : 1)"; then GEMINI_API_KEY=ci-placeholder CI=1 npm run build; fi
 
   python:
     name: Python checks
