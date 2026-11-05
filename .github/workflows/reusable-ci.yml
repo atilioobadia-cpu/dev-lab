@@ -55,7 +55,7 @@ jobs:
             fi
           fi
           if node -e "process.exit(require('./package.json').scripts?.typecheck ? 0 : 1)"; then npm run typecheck; fi
-          if node -e "process.exit(require('./package.json').scripts?.test ? 0 : 1)"; then CI=1 npm test; fi
+          if node -e "const s=require('./package.json').scripts?.test || ''; process.exit(s && !s.includes('no test specified') ? 0 : 1)"; then CI=1 npm test; else echo "No real test script configured; skipping placeholder test command."; fi
           if node -e "process.exit(require('./package.json').scripts?.build ? 0 : 1)"; then CI=1 npm run build; fi
 
   python:
@@ -72,7 +72,7 @@ jobs:
         shell: bash
         run: |
           python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          if [ "${{ needs.detect.outputs.frappe }}" != "true" ] && [ -f requirements.txt ]; then pip install -r requirements.txt; else echo "Skipping PyPI requirements install for Frappe app or no requirements file."; fi
           pip install pytest
       - name: Compile Python sources
         run: python -m compileall -q .
